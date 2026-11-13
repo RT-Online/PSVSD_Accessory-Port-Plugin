@@ -11,7 +11,7 @@ extern "C" {
 /* Returns a user-facing result and an error code suitable for the system log. */
 int amp_change_installation(int install, char *message, size_t capacity);
 int amp_finish_pending_installation(char *message, size_t capacity);
-int amp_prepare_reboot(char *message, size_t capacity);
+int amp_reboot_device(char *message, size_t capacity);
 
 #ifdef __cplusplus
 }

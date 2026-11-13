@@ -6,12 +6,10 @@
 #include <psp2/ctrl.h>
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/processmgr.h>
-#include <psp2/power.h>
 #include <psp2/registrymgr.h>
 #include <psp2/system_param.h>
 #include <psp2/sysmodule.h>
 #include <atomic>
-#include <cstdio>
 #include <new>
 
 // PAF owns the event listeners created by Widget::SetEventCallback.
@@ -24,7 +22,7 @@ SceSize sceUserMainThreadStackSize = 0x10000;
 }
 
 enum class Action { Install, Uninstall, Reboot, Back };
-enum class Activity { Idle, Busy, Rebooting, Exiting };
+enum class Activity { Idle, Busy, Exiting };
 static struct MenuItem {
     const char *id;
     const wchar_t *label;
@@ -60,27 +58,14 @@ static void activate(int, paf::ui::Handler *, paf::ui::Event *, void *data) {
         return;
     }
     char message[240];
+    int ret;
     if (action == Action::Reboot) {
-        int ret = amp_prepare_reboot(message, sizeof(message));
-        if (ret < 0) {
-            show_status(message);
-            activity = Activity::Idle;
-            return;
-        }
-        ret = scePowerRequestColdReset();
-        if (ret < 0) {
-            std::snprintf(message, sizeof(message), "Reboot failed (%08X).", static_cast<unsigned>(ret));
-            show_status(message);
-            activity = Activity::Idle;
-        } else {
-            activity = Activity::Rebooting;
-            show_status("Rebooting...");
-        }
-        return;
+        ret = amp_reboot_device(message, sizeof(message));
+    } else {
+        sceKernelPowerLock(SCE_KERNEL_POWER_TICK_DEFAULT);
+        ret = amp_change_installation(action == Action::Install, message, sizeof(message));
+        sceKernelPowerUnlock(SCE_KERNEL_POWER_TICK_DEFAULT);
     }
-    sceKernelPowerLock(SCE_KERNEL_POWER_TICK_DEFAULT);
-    int ret = amp_change_installation(action == Action::Install, message, sizeof(message));
-    sceKernelPowerUnlock(SCE_KERNEL_POWER_TICK_DEFAULT);
     if (ret < 0) sceClibPrintf("Accessory Mount Plugin: %08X\n", static_cast<unsigned>(ret));
     show_status(message);
     activity = Activity::Idle;
@@ -113,7 +98,7 @@ static int back_button(SceSize size, void *data) {
     if (size != sizeof(unsigned)) return -1;
     unsigned cancel = *static_cast<unsigned *>(data);
     bool released = false;
-    while (activity != Activity::Rebooting) {
+    for (;;) {
         SceCtrlData pad = {};
         if (sceCtrlPeekBufferPositive(0, &pad, 1) > 0) {
             if (!(pad.buttons & cancel)) released = true;
@@ -128,7 +113,6 @@ static int back_button(SceSize size, void *data) {
         }
         sceKernelDelayThread(16000);
     }
-    return 0;
 }
 
 int main() {

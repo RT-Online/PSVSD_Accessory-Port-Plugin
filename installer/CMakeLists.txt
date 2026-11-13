@@ -1,7 +1,7 @@
 set(ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ui")
-set(INSTALLER_VERSION "0.1.5")
-set(INSTALLER_PACKAGE_VERSION "00.15")
+set(INSTALLER_VERSION "0.1.6")
+set(INSTALLER_PACKAGE_VERSION "00.16")
 
 add_executable(accessory_mount_installer main.cpp install.c config.c ../src/common/settings.c)
 set_target_properties(accessory_mount_installer PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
@@ -25,8 +25,7 @@ add_custom_command(TARGET accessory_mount_installer POST_BUILD
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check_runtime_imports.cmake"
   VERBATIM)
 
-# The installer uses the Vita PAF application startup configuration.
-set(VITA_MAKE_FSELF_FLAGS "-a 0x2F00000000000101")
+# Use VitaSDK's normal homebrew executable metadata. PAF is loaded in main.
 vita_create_self(accessory_mount.self accessory_mount_installer UNSAFE STRIPPED REL_OPTIMIZE)
 
 set(vpk "Accessory_Mount_Plugin_${INSTALLER_VERSION}.vpk")
