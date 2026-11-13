@@ -1,0 +1,7 @@
+/* Persistent option ID, path stem, and Vita storage mount ID. */
+AM_MOUNT(UX0,  1, ux0,  0x800)
+AM_MOUNT(UMA0, 0, uma0, 0xF00)
+#ifdef PSVSD_AM_EXTENDED_TARGETS
+AM_MOUNT(GRW0, 2, grw0, 0xA00)
+AM_MOUNT(IMC0, 3, imc0, 0xD00)
+#endif

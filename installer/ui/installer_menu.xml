@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resource version="0.1" type="normal" id="accessory_mount_installer">
+  <pagetable>
+    <page id="accessory_mount_page">
+      <plane style="installer_background" id="installer_root">
+        <layout_hint size="960, 544"/>
+        <text style="title_text" id="installer_title">
+          <layout_hint size="920, 52" pos="0, 203"/>
+        </text>
+        <button style="menu_row" id="install_plugin" sound="_common_sound_button_enter">
+          <layout_hint size="720, 70" pos="0, 111"/>
+        </button>
+        <button style="menu_row" id="uninstall_plugin" sound="_common_sound_button_enter">
+          <layout_hint size="720, 70" pos="0, 37"/>
+        </button>
+        <button style="menu_row" id="reboot_device" sound="_common_sound_button_enter">
+          <layout_hint size="720, 70" pos="0, -37"/>
+        </button>
+        <text style="status_text" id="operation_status">
+          <layout_hint size="720, 100" pos="0, -146"/>
+        </text>
+        <corner_button style="_common_style_corner_bottom_left" id="exit_installer"/>
+      </plane>
+    </page>
+  </pagetable>
+  <templatetable/>
+  <styletable>
+    <style_plane id="installer_background" planeobj="background_image">
+      <planeobj id="background_image" texture0="background_gradient"/>
+    </style_plane>
+    <style_text id="title_text" textobj="title_font">
+      <textobj id="title_font" font_size="32" align_x="0" align_y="0" color="1, 1, 1, 1"/>
+    </style_text>
+    <style_button id="menu_row" bg_obj="row_background" glow_obj="row_glow" label_obj="row_font" left_margin="24" key_focus="1">
+      <planeobj id="row_background" texture0="_common_texture_list_70px"/>
+      <planeobj id="row_glow" texture0="_common_texture_list_glow_70px"/>
+      <textobj id="row_font" font_size="25" align_x="1" align_y="0" color="1, 1, 1, 1"/>
+    </style_button>
+    <style_text id="status_text" textobj="status_font">
+      <textobj id="status_font" font_size="22" align_x="1" align_y="1" word_wrap="1" color="1, 1, 1, 1"/>
+    </style_text>
+  </styletable>
+  <stringtable/>
+  <texturetable>
+    <texture id="background_gradient" src="menu-background.png" type="texture/png"/>
+  </texturetable>
+  <filetable/>
+</resource>

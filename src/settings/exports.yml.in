@@ -1,0 +1,8 @@
+PSVSDSettings:
+  attributes: 0
+  version:
+    major: @PROJECT_VERSION_MAJOR@
+    minor: @PROJECT_VERSION_PATCH@
+  main:
+    start: module_start
+    stop: module_stop

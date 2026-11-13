@@ -1,0 +1,34 @@
+#ifndef ACCESSORY_PATHS_H
+#define ACCESSORY_PATHS_H
+#include <stdint.h>
+#define ACCESSORY_VERSION "1.3.1"
+#define AM_APP_TITLE_ID "RTPSV0001"
+#define ACCESSORY_DATA_DIR "ux0:data/PSVSD_AM"
+#define AM_LEGACY_KERNEL_DIR "ur0:data/PSVSD_Accessory"
+#define AM_LEGACY_SETTINGS_PATH AM_LEGACY_KERNEL_DIR "/settings.ini"
+#define ACCESSORY_USER_LOG ACCESSORY_DATA_DIR "/test.log"
+#define ACCESSORY_STAGED_PROBE ACCESSORY_DATA_DIR "/usbmc_accessory_probe.skprx"
+#define ACCESSORY_KERNEL_DIR "ur0:data/PSVSD_AM"
+#define AM_NATIVE_SETTINGS_DIR ACCESSORY_KERNEL_DIR "/native-settings"
+#ifdef PSVSD_AM_NATIVE_SETTINGS
+#define AM_PAYLOAD_ROOT AM_NATIVE_SETTINGS_DIR "/"
+#else
+#define AM_PAYLOAD_ROOT "app0:"
+#endif
+#define ACCESSORY_SOURCE_PROBE AM_PAYLOAD_ROOT "usbmc_accessory_probe.skprx"
+#define ACCESSORY_KERNEL_LOG ACCESSORY_KERNEL_DIR "/kernel.log"
+#define ACCESSORY_KERNEL_FALLBACK ACCESSORY_DATA_DIR "/kernel.log"
+#define ACCESSORY_ORIGINAL_MAGIC 0x50534F52u
+#define AM_ORIGINAL_EXPORT_NID 0x2A4C28E2u
+#define ACCESSORY_REQUEST_MAGIC 0x50535641u
+#define AM_SETTINGS_PATH ACCESSORY_KERNEL_DIR "/settings.ini"
+#define AM_APP_LOG ACCESSORY_KERNEL_DIR "/app.log"
+#define AM_BOOT_PLUGIN "ur0:tai/psvsd_am.skprx"
+#define AM_BOOT_SOURCE AM_PAYLOAD_ROOT "psvsd_am.skprx"
+#define AM_TAI_CONFIG "ur0:tai/config.txt"
+#define AM_KERNEL_NAME "PSVSDAMKernel"
+#define AM_PROBE_NAME "PSVSDAMProbe"
+#define AM_STATUS_SOURCE AM_PAYLOAD_ROOT "psvsd_am_status.skprx"
+#define AM_STATUS_STAGED ACCESSORY_DATA_DIR "/psvsd_am_status.skprx"
+typedef struct { uint32_t magic, request_id; } AccessoryRequest;
+#endif
