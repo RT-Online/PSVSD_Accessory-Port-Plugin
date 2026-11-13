@@ -5,19 +5,22 @@
       <plane style="installer_background" id="installer_root">
         <layout_hint size="960, 544"/>
         <text style="title_text" id="installer_title">
-          <layout_hint size="920, 52" pos="0, 203"/>
+          <layout_hint size="880, 64" pos="0, 208"/>
         </text>
         <button style="menu_row" id="install_plugin" sound="_common_sound_button_enter">
-          <layout_hint size="720, 70" pos="0, 111"/>
+          <layout_hint size="840, 80" pos="0, 136"/>
+          <plane style="install_icon" hit_ignore="1"><layout_hint size="32, 32" pos="-302, 0"/></plane>
         </button>
         <button style="menu_row" id="uninstall_plugin" sound="_common_sound_button_enter">
-          <layout_hint size="720, 70" pos="0, 37"/>
+          <layout_hint size="840, 80" pos="0, 56"/>
+          <plane style="uninstall_icon" hit_ignore="1"><layout_hint size="32, 32" pos="-302, 0"/></plane>
         </button>
         <button style="menu_row" id="reboot_device" sound="_common_sound_button_enter">
-          <layout_hint size="720, 70" pos="0, -37"/>
+          <layout_hint size="840, 80" pos="0, -24"/>
+          <plane style="reboot_icon" hit_ignore="1"><layout_hint size="32, 32" pos="-302, 0"/></plane>
         </button>
         <text style="status_text" id="operation_status">
-          <layout_hint size="720, 100" pos="0, -146"/>
+          <layout_hint size="630, 120" pos="44, -140"/>
         </text>
         <corner_button style="_common_style_corner_bottom_left" id="exit_installer"/>
       </plane>
@@ -28,21 +31,33 @@
     <style_plane id="installer_background" planeobj="background_image">
       <planeobj id="background_image" texture0="background_gradient"/>
     </style_plane>
+    <style_plane id="install_icon" planeobj="install_image">
+      <planeobj id="install_image" texture0="icon_install"/>
+    </style_plane>
+    <style_plane id="uninstall_icon" planeobj="uninstall_image">
+      <planeobj id="uninstall_image" texture0="icon_uninstall"/>
+    </style_plane>
+    <style_plane id="reboot_icon" planeobj="reboot_image">
+      <planeobj id="reboot_image" texture0="icon_reboot"/>
+    </style_plane>
     <style_text id="title_text" textobj="title_font">
-      <textobj id="title_font" font_size="32" align_x="0" align_y="0" color="1, 1, 1, 1"/>
+      <textobj id="title_font" font_size="34" bold="1" align_x="1" align_y="1" color="1, 1, 1, 1"/>
     </style_text>
-    <style_button id="menu_row" bg_obj="row_background" glow_obj="row_glow" label_obj="row_font" left_margin="24" key_focus="1">
+    <style_button id="menu_row" bg_obj="row_background" glow_obj="row_glow" label_obj="row_font" left_margin="149" right_margin="40" key_focus="1">
       <planeobj id="row_background" texture0="_common_texture_list_70px"/>
       <planeobj id="row_glow" texture0="_common_texture_list_glow_70px"/>
-      <textobj id="row_font" font_size="25" align_x="1" align_y="0" color="1, 1, 1, 1"/>
+      <textobj id="row_font" font_size="30" bold="1" align_x="0" align_y="1" text_align="0" color="1, 1, 1, 1"/>
     </style_button>
     <style_text id="status_text" textobj="status_font">
-      <textobj id="status_font" font_size="22" align_x="1" align_y="1" word_wrap="1" color="1, 1, 1, 1"/>
+      <textobj id="status_font" font_size="21" align_x="0" align_y="0" text_align="0" word_wrap="1" color="1, 1, 1, 1"/>
     </style_text>
   </styletable>
   <stringtable/>
   <texturetable>
     <texture id="background_gradient" src="menu-background.png" type="texture/png"/>
+    <texture id="icon_install" src="menu-install.png" type="texture/png"/>
+    <texture id="icon_uninstall" src="menu-uninstall.png" type="texture/png"/>
+    <texture id="icon_reboot" src="menu-reboot.png" type="texture/png"/>
   </texturetable>
   <filetable/>
 </resource>

@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "install.h"
-#include <limits>
+#include <limits> // Required by the VitaSDK PAF vector header.
 #include <paf.h>
 #include <psp2/appmgr.h>
 #include <psp2/ctrl.h>
-#include <psp2/io/fcntl.h>
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/power.h>
@@ -26,7 +25,16 @@ SceSize sceUserMainThreadStackSize = 0x10000;
 
 enum class Action { Install, Uninstall, Reboot, Back };
 enum class Activity { Idle, Busy, Rebooting, Exiting };
-static Action actions[] = {Action::Install, Action::Uninstall, Action::Reboot, Action::Back};
+static struct MenuItem {
+    const char *id;
+    const wchar_t *label;
+    Action action;
+} menu[] = {
+    {"install_plugin", L"Install Accessory Mount Plugin", Action::Install},
+    {"uninstall_plugin", L"Uninstall", Action::Uninstall},
+    {"reboot_device", L"Reboot", Action::Reboot},
+    {"exit_installer", nullptr, Action::Back},
+};
 static paf::ui::Widget *status;
 static bool ready;
 static std::atomic<Activity> activity{Activity::Idle};
@@ -53,15 +61,13 @@ static void activate(int, paf::ui::Handler *, paf::ui::Event *, void *data) {
     }
     char message[240];
     if (action == Action::Reboot) {
-        int ret = amp_finish_pending_installation();
+        int ret = amp_prepare_reboot(message, sizeof(message));
         if (ret < 0) {
-            std::snprintf(message, sizeof(message), "Setup needs recovery (%08X). See the README.", static_cast<unsigned>(ret));
             show_status(message);
             activity = Activity::Idle;
             return;
         }
-        ret = sceIoSync("ur0:", 0);
-        if (ret >= 0) ret = scePowerRequestColdReset();
+        ret = scePowerRequestColdReset();
         if (ret < 0) {
             std::snprintf(message, sizeof(message), "Reboot failed (%08X).", static_cast<unsigned>(ret));
             show_status(message);
@@ -92,17 +98,14 @@ static void load_menu(paf::Plugin *plugin) {
     auto *title = root->FindChild("installer_title");
     if (!title || !status) return;
     title->SetString(paf::wstring(L"Accessory Mount Plugin"), paf::ui::Text::OBJ_TEXT);
-    const char *ids[] = {"install_plugin", "uninstall_plugin", "reboot_device", "exit_installer"};
-    const wchar_t *labels[] = {L"Install Accessory Mount Plugin", L"Uninstall", L"Reboot"};
-    static_assert(sizeof(ids) / sizeof(*ids) == sizeof(actions) / sizeof(*actions), "Menu actions");
-    for (size_t i = 0; i < sizeof(actions) / sizeof(*actions); ++i) {
-        auto *button = root->FindChild(ids[i]);
+    for (auto &item : menu) {
+        auto *button = root->FindChild(item.id);
         if (!button) return;
-        if (i < sizeof(labels) / sizeof(*labels)) button->SetString(paf::wstring(labels[i]), 1);
-        if (button->SetEventCallback(paf::ui::ButtonBase::CB_BTN_DECIDE, activate, &actions[i]) < 0) return;
+        if (item.label) button->SetString(paf::wstring(item.label), paf::ui::Button::OBJ_LABEL);
+        if (button->SetEventCallback(paf::ui::ButtonBase::CB_BTN_DECIDE, activate, &item.action) < 0) return;
     }
-    int recovery = amp_finish_pending_installation();
-    if (recovery < 0) show_status("Setup needs recovery. See the README.");
+    char message[240];
+    if (amp_finish_pending_installation(message, sizeof(message)) < 0) show_status(message);
     ready = true;
 }
 
@@ -154,8 +157,8 @@ int main() {
     if (!memory) return 1;
     auto *framework = new (memory) paf::Framework(framework_parameters);
     framework->LoadCommonResourceSync();
-    sceAppMgrSetInfobarState(SCE_APPMGR_INFOBAR_VISIBILITY_VISIBLE, SCE_APPMGR_INFOBAR_COLOR_WHITE,
-                            SCE_APPMGR_INFOBAR_TRANSPARENCY_TRANSLUCENT);
+    sceAppMgrSetInfobarState(SCE_APPMGR_INFOBAR_VISIBILITY_VISIBLE, SCE_APPMGR_INFOBAR_COLOR_BLACK,
+                            SCE_APPMGR_INFOBAR_TRANSPARENCY_OPAQUE);
 
     paf::Plugin::InitParam plugin_parameters;
     plugin_parameters.name = "accessory_mount_installer";

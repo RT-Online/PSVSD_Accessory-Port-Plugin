@@ -1,7 +1,7 @@
 set(ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ui")
-set(INSTALLER_VERSION "0.1.4")
-set(INSTALLER_PACKAGE_VERSION "00.14")
+set(INSTALLER_VERSION "0.1.5")
+set(INSTALLER_PACKAGE_VERSION "00.15")
 
 add_executable(accessory_mount_installer main.cpp install.c config.c ../src/common/settings.c)
 set_target_properties(accessory_mount_installer PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,9 @@ target_compile_definitions(accessory_mount_installer PRIVATE PSVSD_AM_EXTENDED_T
 target_compile_options(accessory_mount_installer PRIVATE -Wall -Wextra
   "$<$<COMPILE_LANGUAGE:CXX>:-fshort-wchar;-fno-exceptions;-fno-rtti;-D__declspec(x)=>")
 # PAF strings use UTF-16. The C runtime is used only for narrow text and file buffers.
-target_link_options(accessory_mount_installer PRIVATE -Wl,-q,--no-wchar-size-warning)
+# VitaSDK reserves this gap for the import tables appended by vita-elf-create.
+target_link_options(accessory_mount_installer PRIVATE
+  -Wl,-q,--no-wchar-size-warning,--defsym=__sce_headroom=0x10000)
 # Search newlib before the PAF stubs, which also export standard C functions.
 # Pass -lc through to the linker so the compiler driver preserves this order.
 target_link_libraries(accessory_mount_installer PRIVATE

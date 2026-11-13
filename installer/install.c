@@ -13,6 +13,7 @@
 
 #define NOT_FOUND ((int)0x80010002)
 #define ALREADY_EXISTS ((int)0x80010011)
+#define NO_DEVICE ((int)0x80010013)
 #define IO_ERROR ((int)0x80010005)
 #define CONFIG_LIMIT 65536
 #define FILE_LIMIT (1024 * 1024)
@@ -20,6 +21,7 @@
 #define PENDING WORK_DIR "/pending"
 #define COMMITTED WORK_DIR "/committed"
 #define CONFIG_BACKUP AM_TAI_CONFIG ".accessory-mount.bak"
+#define INSTALLER_PAYLOAD_DIR "app0:/plugins/"
 #define TRANSACTION_MAGIC 0x414d5031u
 
 enum {
@@ -32,11 +34,11 @@ static const struct {
     const char *payload;
 } files[FILE_COUNT] = {
     [CONFIG] = {AM_TAI_CONFIG, NULL},
-    [SETTINGS_PLUGIN] = {AMP_SETTINGS_PLUGIN, "app0:plugins/psvsd_settings.suprx"},
-    [BOOT_PLUGIN] = {AM_BOOT_PLUGIN, "app0:plugins/psvsd_am.skprx"},
-    [BOOT_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/psvsd_am.skprx", "app0:plugins/psvsd_am.skprx"},
-    [STATUS_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/psvsd_am_status.skprx", "app0:plugins/psvsd_am_status.skprx"},
-    [PROBE_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/usbmc_accessory_probe.skprx", "app0:plugins/usbmc_accessory_probe.skprx"},
+    [SETTINGS_PLUGIN] = {AMP_SETTINGS_PLUGIN, INSTALLER_PAYLOAD_DIR "psvsd_settings.suprx"},
+    [BOOT_PLUGIN] = {AM_BOOT_PLUGIN, INSTALLER_PAYLOAD_DIR "psvsd_am.skprx"},
+    [BOOT_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/psvsd_am.skprx", INSTALLER_PAYLOAD_DIR "psvsd_am.skprx"},
+    [STATUS_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/psvsd_am_status.skprx", INSTALLER_PAYLOAD_DIR "psvsd_am_status.skprx"},
+    [PROBE_PAYLOAD] = {AM_NATIVE_SETTINGS_DIR "/usbmc_accessory_probe.skprx", INSTALLER_PAYLOAD_DIR "usbmc_accessory_probe.skprx"},
     [MOUNT_SETTINGS] = {AM_SETTINGS_PATH, NULL},
 };
 
@@ -86,8 +88,16 @@ static int read_file(const char *path, size_t limit, char **data, size_t *size) 
 }
 
 static int remove_file(const char *path) {
-    int ret = sceIoRemove(path);
+    SceIoStat stat;
+    int ret = sceIoGetstat(path, &stat);
+    if (ret >= 0) ret = SCE_S_ISREG(stat.st_mode) ? sceIoRemove(path) : IO_ERROR;
     return ret == NOT_FOUND ? 0 : ret;
+}
+
+static int sync_and_close(int fd) {
+    int ret = sceIoSyncByFd(fd, 0);
+    int closed = sceIoClose(fd);
+    return ret < 0 ? ret : closed;
 }
 
 static int write_file(const char *path, const void *data, size_t size) {
@@ -104,8 +114,8 @@ static int write_file(const char *path, const void *data, size_t size) {
         bytes += n;
         size -= (size_t)n;
     }
-    int closed = sceIoClose(fd);
-    if (ret >= 0) ret = closed;
+    if (ret >= 0) ret = sync_and_close(fd);
+    else sceIoClose(fd);
     if (ret < 0) remove_file(path);
     return ret;
 }
@@ -114,18 +124,42 @@ static void temporary_path(char out[128], unsigned i, const char *suffix) {
     snprintf(out, 128, "%s.amp-%s", files[i].path, suffix);
 }
 
-static int flush(void) { return sceIoSync("ur0:", 0); }
+static int sync_file(const char *path) {
+    int fd = sceIoOpen(path, SCE_O_RDWR, 0);
+    return fd < 0 ? fd : sync_and_close(fd);
+}
 
-static int clean_files(int discard_previous) {
+static int flush(const char *journal) {
+    int ret = sceIoSync("ur0:", 0);
+    if (ret != NO_DEVICE) return ret;
+    ret = sceIoSync("ur0:/", 0);
+    if (ret != NO_DEVICE) return ret;
+
+    /* Keep file-level sync when the mount-name API returns ENODEV. */
+    ret = sync_file(AM_TAI_CONFIG);
+    if (ret >= 0 && journal) ret = sync_file(journal);
+    return ret;
+}
+
+static int clean_files(int discard_previous, const char **step) {
+    *step = discard_previous ? "clear completed setup files" : "check the previous setup files";
     for (unsigned i = 0; i < FILE_COUNT; ++i) {
         char path[128];
         temporary_path(path, i, "old");
-        size_t size;
-        int ret = discard_previous ? remove_file(path) : file_status(path, &size);
-        if (discard_previous ? ret < 0 : ret != NOT_FOUND)
-            return ret < 0 ? ret : IO_ERROR;
+        if (discard_previous) {
+            int ret = remove_file(path);
+            if (ret < 0) return ret;
+        } else {
+            size_t size;
+            int ret = file_status(path, &size);
+            if (ret != NOT_FOUND) return ret < 0 ? ret : IO_ERROR;
+        }
+    }
+    *step = "clear staged setup files";
+    for (unsigned i = 0; i < FILE_COUNT; ++i) {
+        char path[128];
         temporary_path(path, i, "new");
-        ret = remove_file(path);
+        int ret = remove_file(path);
         if (ret < 0) return ret;
     }
     return remove_file(PENDING ".new");
@@ -136,48 +170,94 @@ static unsigned file_in_order(int install, unsigned step) {
     return install ? (step + 1) % FILE_COUNT : step;
 }
 
-static int recover_transaction(void) {
+static int read_transaction(const char *path, Transaction *tx) {
     size_t size;
-    int ret = file_status(COMMITTED, &size);
-    if (ret != NOT_FOUND) {
-        if (ret < 0 || size != sizeof(Transaction)) return ret < 0 ? ret : IO_ERROR;
-        ret = clean_files(1);
-        if (ret >= 0) ret = remove_file(COMMITTED);
-        return ret < 0 ? ret : flush();
-    }
     char *bytes;
-    ret = read_file(PENDING, sizeof(Transaction), &bytes, &size);
-    if (ret == NOT_FOUND) return clean_files(0);
+    int ret = read_file(path, sizeof(*tx), &bytes, &size);
     if (ret < 0) return ret;
-    Transaction tx = {0};
-    if (size == sizeof(tx)) memcpy(&tx, bytes, sizeof(tx));
+    if (size == sizeof(*tx)) memcpy(tx, bytes, sizeof(*tx));
     free(bytes);
-    if (tx.magic != TRANSACTION_MAGIC || tx.changed >= bit(FILE_COUNT) ||
-        (tx.existed & ~tx.changed) || (tx.writes & ~tx.changed) || tx.install > 1) return IO_ERROR;
+    if (size != sizeof(*tx) || tx->magic != TRANSACTION_MAGIC || !tx->changed ||
+        tx->changed >= bit(FILE_COUNT) || (tx->existed & ~tx->changed) ||
+        (tx->writes & ~tx->changed) || tx->install > 1) return IO_ERROR;
+    return 0;
+}
 
-    for (unsigned step = FILE_COUNT; step > 0; --step) {
-        unsigned i = file_in_order(tx.install, step - 1);
+static int finish_transaction(const char *journal, const char **step) {
+    *step = "sync the recovered files";
+    int ret = flush(journal);
+    if (ret < 0) return ret;
+    *step = "clear the installer journal";
+    ret = remove_file(journal);
+    if (ret < 0) return ret;
+    *step = "sync the cleared installer journal";
+    return flush(NULL);
+}
+
+static int recover_transaction(const char **step) {
+    Transaction tx;
+    *step = "read the completed setup journal";
+    int ret = read_transaction(COMMITTED, &tx);
+    if (ret != NOT_FOUND) {
+        if (ret < 0) return ret;
+        *step = "check for a second setup journal";
+        size_t size;
+        ret = file_status(PENDING, &size);
+        if (ret != NOT_FOUND) return ret < 0 ? ret : IO_ERROR;
+        *step = "sync the completed setup";
+        ret = flush(COMMITTED);
+        if (ret < 0) return ret;
+        ret = clean_files(1, step);
+        return ret < 0 ? ret : finish_transaction(COMMITTED, step);
+    }
+    *step = "read the pending setup journal";
+    ret = read_transaction(PENDING, &tx);
+    if (ret == NOT_FOUND) return clean_files(0, step);
+    if (ret < 0) return ret;
+
+    *step = "restore the previous setup files";
+    for (unsigned index = FILE_COUNT; index > 0; --index) {
+        unsigned i = file_in_order(tx.install, index - 1);
         if (!(tx.changed & bit(i))) continue;
         char old[128];
         temporary_path(old, i, "old");
+        size_t size;
         ret = file_status(old, &size);
-        if (ret != NOT_FOUND && ret < 0) return ret;
-        if (ret == 0 || !(tx.existed & bit(i))) {
-            int remove = remove_file(files[i].path);
-            if (remove < 0) return remove;
-            if (ret == 0) {
-                int restore = sceIoRename(old, files[i].path);
-                if (restore < 0) return restore;
-            }
+        if (ret == NOT_FOUND) {
+            ret = tx.existed & bit(i) ? file_status(files[i].path, &size) : remove_file(files[i].path);
+        } else if (ret >= 0) {
+            ret = remove_file(files[i].path);
+            if (ret >= 0) ret = sceIoRename(old, files[i].path);
         }
+        if (ret < 0) return ret;
     }
-    ret = clean_files(0);
-    if (ret >= 0) ret = flush();
-    if (ret >= 0) ret = remove_file(PENDING);
-    return ret < 0 ? ret : flush();
+    ret = clean_files(0, step);
+    return ret < 0 ? ret : finish_transaction(PENDING, step);
 }
 
-int amp_finish_pending_installation(void) { return recover_transaction(); }
+int amp_finish_pending_installation(char *message, size_t capacity) {
+    const char *step;
+    SceIoStat stat;
+    int ret = sceIoGetstat("ur0:tai", &stat);
+    if (ret >= 0 && !SCE_S_ISDIR(stat.st_mode)) ret = IO_ERROR;
+    if (ret < 0) {
+        snprintf(message, capacity, "Cannot access ur0:tai (%08X).\nCheck the folder in VitaShell.", (unsigned)ret);
+        return ret;
+    }
+    ret = recover_transaction(&step);
+    if (ret < 0)
+        snprintf(message, capacity, "Could not %s (%08X).\nSee the README before rebooting.", step, (unsigned)ret);
+    return ret;
+}
+
+int amp_prepare_reboot(char *message, size_t capacity) {
+    int ret = amp_finish_pending_installation(message, capacity);
+    if (ret < 0) return ret;
+    ret = flush(NULL);
+    if (ret < 0)
+        snprintf(message, capacity, "Could not sync the taiHEN config (%08X).", (unsigned)ret);
+    return ret;
+}
 
 static int same_file(const char *path, const char *bytes, size_t size) {
     char *current;
@@ -207,13 +287,18 @@ static int stage(Transaction *tx, unsigned i, const char *bytes, size_t length) 
     return 0;
 }
 
-static int commit(const Transaction *tx) {
+static int commit(const Transaction *tx, const char **step) {
     if (!tx->changed) return 0;
+    *step = "save the pending setup journal";
     int ret = write_file(PENDING ".new", tx, sizeof(*tx));
     if (ret >= 0) ret = sceIoRename(PENDING ".new", PENDING);
-    if (ret >= 0) ret = flush();
-    for (unsigned step = 0; ret >= 0 && step < FILE_COUNT; ++step) {
-        unsigned i = file_in_order(tx->install, step);
+    if (ret < 0) return ret;
+    *step = "sync the pending setup journal";
+    ret = flush(PENDING);
+    if (ret < 0) return ret;
+    *step = "replace the setup files";
+    for (unsigned index = 0; index < FILE_COUNT; ++index) {
+        unsigned i = file_in_order(tx->install, index);
         if (!(tx->changed & bit(i))) continue;
         if (tx->existed & bit(i)) {
             char old[128];
@@ -225,11 +310,13 @@ static int commit(const Transaction *tx) {
             temporary_path(path, i, "new");
             ret = sceIoRename(path, files[i].path);
         }
+        if (ret < 0) return ret;
     }
-    if (ret >= 0) ret = flush();
-    if (ret >= 0) ret = sceIoRename(PENDING, COMMITTED);
-    if (ret >= 0) ret = flush();
-    return ret;
+    *step = "sync the installed files";
+    ret = flush(PENDING);
+    if (ret < 0) return ret;
+    *step = "complete the setup journal";
+    return sceIoRename(PENDING, COMMITTED);
 }
 
 static int save_config_backup(const char *input, size_t length) {
@@ -311,22 +398,28 @@ static int stage_payloads(Transaction *tx, int install, int driver) {
 static int change_installation(int install, char *message, size_t capacity) {
     size_t length;
     int ret = file_status("ux0:tai/config.txt", &length);
+    if (ret >= 0) {
+        snprintf(message, capacity, "taiHEN config also exists in ux0:tai.\nSee the README before continuing.");
+        return IO_ERROR;
+    }
     if (ret != NOT_FOUND) {
-        snprintf(message, capacity, "Use ur0:tai/config.txt for taiHEN, then retry.");
-        return ret < 0 ? ret : IO_ERROR;
+        snprintf(message, capacity, "Could not check ux0:tai/config.txt (%08X).", (unsigned)ret);
+        return ret;
     }
     char *input;
     ret = read_file(AM_TAI_CONFIG, CONFIG_LIMIT, &input, &length);
     if (ret < 0) {
-        snprintf(message, capacity, "Could not read ur0:tai/config.txt.");
+        snprintf(message, capacity, "Could not read ur0:tai/config.txt (%08X).", (unsigned)ret);
         return ret;
     }
     char *output = malloc(length + 96);
     if (!output) {
+        snprintf(message, capacity, "Could not allocate memory for the taiHEN config.");
         free(input);
         return IO_ERROR;
     }
     Transaction tx = {.magic = TRANSACTION_MAGIC, .install = (unsigned)install};
+    const char *step = "check the existing storage driver";
     int driver = existing_boot_driver();
     ret = driver;
     if (driver < 0) goto done;
@@ -347,9 +440,11 @@ static int change_installation(int install, char *message, size_t capacity) {
         ret = IO_ERROR;
         goto done;
     }
+    step = "stage the plug-in files";
     ret = stage_payloads(&tx, install, driver);
     if (ret < 0) goto done;
     if (!install && driver < 2 && (current.has_settings || current.has_boot || driver == 1)) {
+        step = "save the accessory-port settings";
         AmSettings settings;
         if (read_mount_settings(&settings) >= 0 && settings.enabled) {
             char disabled[128];
@@ -368,9 +463,15 @@ static int change_installation(int install, char *message, size_t capacity) {
         ret = IO_ERROR;
         goto done;
     }
+    step = "stage the taiHEN config";
     ret = stage(&tx, CONFIG, output, (size_t)edited);
-    if (ret >= 0 && (tx.changed & bit(CONFIG))) ret = save_config_backup(input, length);
-    if (ret >= 0) ret = commit(&tx);
+    if (ret < 0) goto done;
+    if (tx.changed & bit(CONFIG)) {
+        step = "back up the taiHEN config";
+        ret = save_config_backup(input, length);
+        if (ret < 0) goto done;
+    }
+    ret = commit(&tx, &step);
     if (ret >= 0) {
         const char *status = install
             ? "Installed. Reboot, then open Settings > Devices > PSVSD Accessory Port."
@@ -379,6 +480,8 @@ static int change_installation(int install, char *message, size_t capacity) {
         snprintf(message, capacity, "%s", status);
     }
 done:
+    if (ret < 0 && !message[0])
+        snprintf(message, capacity, "Could not %s (%08X).", step, (unsigned)ret);
     free(output);
     free(input);
     return ret;
@@ -387,15 +490,14 @@ done:
 int amp_change_installation(int install, char *message, size_t capacity) {
     if (!capacity) return IO_ERROR;
     message[0] = '\0';
-    int ret = recover_transaction();
-    if (ret >= 0) ret = make_directories();
-    if (ret >= 0) ret = change_installation(install, message, capacity);
-    int cleanup = recover_transaction();
-    if (cleanup < 0) {
-        snprintf(message, capacity, "Setup needs recovery (%08X).\nSee the README before rebooting.", (unsigned)cleanup);
-        return cleanup;
+    int ret = amp_finish_pending_installation(message, capacity);
+    if (ret < 0) return ret;
+    ret = make_directories();
+    if (ret < 0) {
+        snprintf(message, capacity, "Could not create the setup folder on ur0: (%08X).", (unsigned)ret);
+        return ret;
     }
-    if (ret < 0 && !message[0])
-        snprintf(message, capacity, "Setup could not finish (%08X).", (unsigned)ret);
-    return ret;
+    ret = change_installation(install, message, capacity);
+    int cleanup = amp_finish_pending_installation(message, capacity);
+    return cleanup < 0 ? cleanup : ret;
 }
