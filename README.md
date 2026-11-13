@@ -6,7 +6,7 @@ The bundled driver supports firmware 3.60, 3.65, 3.67, and 3.68. The reported co
 
 ## Install on your Vita
 
-1. Download `Accessory_Mount_Plugin_0.1.3.vpk` from [Releases](https://github.com/RT-Online/PSVSD_Accessory-Port-Plugin/releases) and install it in VitaShell. The installer needs taiHEN, **Enable Unsafe Homebrew**, and an active `ur0:tai/config.txt`.
+1. Download `Accessory_Mount_Plugin_0.1.4.vpk` from [Releases](https://github.com/RT-Online/PSVSD_Accessory-Port-Plugin/releases) and install it in VitaShell. You can install it over the 0.1.3 bubble. The installer needs taiHEN, **Enable Unsafe Homebrew**, and an active `ur0:tai/config.txt`.
 2. Close Settings and open the **Accessory Mount Plugin** bubble. Select **Install Accessory Mount Plugin**, wait for the result, then select **Reboot**.
 3. Open **Settings → Devices → PSVSD Accessory Port**. Choose **Mount as**, turn on **Enable Accessory Port**, and press **Reboot Device** at the bottom right.
 
@@ -53,7 +53,7 @@ Find the VPK in `build/installer/`. For the four plug-in binaries alone, configu
 
 ## Test and recovery
 
-The Native Settings 0.1.3 plug-in was verified on hardware. The standalone installer is a test build. Confirm that the menu opens, install and uninstall report success, **Back** exits, and **Reboot** applies the change.
+Installer 0.1.4 fixes a crash that occurred before the menu opened. It bundles the Native Settings 0.1.3 plug-in that was verified on hardware. The installer is a test build. Confirm that the menu opens, install and uninstall report success, **Back** exits, and **Reboot** applies the change.
 
 If setup is interrupted, reopen the installer to finish recovery before rebooting. The first backup is the pre-install config and may predate later edits. If a restart leaves Settings unavailable, use VitaShell or your normal taiHEN recovery method to inspect the config and restore the relevant entries. Settings diagnostics are in `ur0:data/PSVSD_AM/native-settings/settings.log`. Boot diagnostics are in `ur0:data/PSVSD_AM/kernel.log`.
 

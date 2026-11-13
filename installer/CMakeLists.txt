@@ -1,5 +1,7 @@
 set(ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ui")
+set(INSTALLER_VERSION "0.1.4")
+set(INSTALLER_PACKAGE_VERSION "00.14")
 
 add_executable(accessory_mount_installer main.cpp install.c config.c ../src/common/settings.c)
 set_target_properties(accessory_mount_installer PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
@@ -8,17 +10,26 @@ target_compile_options(accessory_mount_installer PRIVATE -Wall -Wextra
   "$<$<COMPILE_LANGUAGE:CXX>:-fshort-wchar;-fno-exceptions;-fno-rtti;-D__declspec(x)=>")
 # PAF strings use UTF-16. The C runtime is used only for narrow text and file buffers.
 target_link_options(accessory_mount_installer PRIVATE -Wl,-q,--no-wchar-size-warning)
+# Search newlib before the PAF stubs, which also export standard C functions.
+# Pass -lc through to the linker so the compiler driver preserves this order.
 target_link_libraries(accessory_mount_installer PRIVATE
-  ScePaf_stub_weak SceSysmodule_stub SceAppMgr_stub ScePower_stub SceRegistryMgr_stub
+  -Wl,-lc
+  SceSysmodule_stub SceAppMgr_stub ScePower_stub SceRegistryMgr_stub
   SceIofilemgr_stub SceLibKernel_stub SceProcessmgr_stub SceKernelThreadMgr_stub
-  SceCtrl_stub SceVshBridge_stub)
+  SceCtrl_stub SceVshBridge_stub ScePaf_stub_weak)
+add_custom_command(TARGET accessory_mount_installer POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" "-DOBJDUMP=${CMAKE_OBJDUMP}"
+    "-DELF=$<TARGET_FILE:accessory_mount_installer>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_runtime_imports.cmake"
+  VERBATIM)
 
 # The installer uses the Vita PAF application startup configuration.
 set(VITA_MAKE_FSELF_FLAGS "-a 0x2F00000000000101")
 vita_create_self(accessory_mount.self accessory_mount_installer UNSAFE STRIPPED REL_OPTIMIZE)
 
-vita_create_vpk(Accessory_Mount_Plugin_${PROJECT_VERSION}.vpk RTPSV0002 accessory_mount.self
-  VERSION "00.13"
+set(vpk "Accessory_Mount_Plugin_${INSTALLER_VERSION}.vpk")
+vita_create_vpk(${vpk} RTPSV0002 accessory_mount.self
+  VERSION "${INSTALLER_PACKAGE_VERSION}"
   NAME "Accessory Mount Plugin"
   FILE "${ASSETS}/icon0.png" sce_sys/icon0.png
   FILE "${ASSETS}/template.xml" sce_sys/livearea/contents/template.xml
@@ -30,7 +41,6 @@ vita_create_vpk(Accessory_Mount_Plugin_${PROJECT_VERSION}.vpk RTPSV0002 accessor
   FILE "${CMAKE_BINARY_DIR}/psvsd_am_status.skprx" plugins/psvsd_am_status.skprx
   FILE "${CMAKE_BINARY_DIR}/usbmc_accessory_probe.skprx" plugins/usbmc_accessory_probe.skprx)
 
-set(vpk "Accessory_Mount_Plugin_${PROJECT_VERSION}.vpk")
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.20")
   string(APPEND vpk "-vpk")
 endif()
